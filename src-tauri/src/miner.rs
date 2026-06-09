@@ -8,6 +8,18 @@ pub struct MinerState {
     pub child: Arc<Mutex<Option<Child>>>,
 }
 
+// Kill any running XMRig process when the managed state is dropped (normal app exit).
+// This is a safety net; the primary cleanup path is stop_miner_on_exit called from
+// the RunEvent::Exit handler, which fires before Drop.
+impl Drop for MinerState {
+    fn drop(&mut self) {
+        let mut lock = lock_child(&self.child);
+        if let Some(mut child) = lock.take() {
+            let _ = child.start_kill();
+        }
+    }
+}
+
 fn lock_child(child: &Mutex<Option<Child>>) -> std::sync::MutexGuard<'_, Option<Child>> {
     child.lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -116,5 +128,58 @@ pub fn stop_miner(miner_state: tauri::State<'_, MinerState>) -> Result<(), Strin
     Ok(())
 }
 
+/// Kill any running miner process without needing a `tauri::State` wrapper.
+/// Used by the RunEvent::Exit handler to guarantee cleanup on normal app close.
+pub fn stop_miner_on_exit(state: &MinerState) {
+    let mut lock = lock_child(&state.child);
+    if let Some(mut child) = lock.take() {
+        let _ = child.start_kill();
+    }
+}
+
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stop_miner_on_exit_with_no_child_does_not_panic() {
+        let state = MinerState {
+            child: Arc::new(Mutex::new(None)),
+        };
+        stop_miner_on_exit(&state);
+    }
+
+    #[test]
+    fn miner_state_drop_does_not_panic_when_empty() {
+        let state = MinerState {
+            child: Arc::new(Mutex::new(None)),
+        };
+        drop(state);
+    }
+
+    #[test]
+    fn default_thread_count_formula_is_fifty_percent() {
+        // Test the formula used in commands::default_thread_count:
+        // ((total_cores as u16) / 2).max(1)
+        let cases: &[(usize, u16)] = &[
+            (1, 1),   // 1 core  → 1 thread (minimum)
+            (2, 1),   // 2 cores → 1 thread (50%)
+            (4, 2),   // 4 cores → 2 threads (50%)
+            (8, 4),   // 8 cores → 4 threads (50%)
+            (16, 8),  // 16 cores → 8 threads (50%)
+            (32, 16), // 32 cores → 16 threads (50%)
+            (64, 32), // 64 cores → 32 threads (50%)
+        ];
+        for &(cores, expected) in cases {
+            let result = ((cores as u16) / 2).max(1);
+            assert_eq!(
+                result, expected,
+                "default_thread_count({}) should be {} but got {}",
+                cores, expected, result
+            );
+        }
+    }
+}

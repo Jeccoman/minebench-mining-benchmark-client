@@ -71,6 +71,14 @@ pub fn run() {
             }
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app_handle, event| {
+            // Kill XMRig on normal app exit so it never lingers in the background.
+            // The MinerState::Drop impl is a secondary safety net for abnormal termination.
+            if let tauri::RunEvent::Exit = event {
+                let state = app_handle.state::<MinerState>();
+                miner::stop_miner_on_exit(&state);
+            }
+        });
 }

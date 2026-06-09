@@ -433,10 +433,18 @@ export const useMinerStore = create<MiningState>((set, get) => ({
         const currentMaxThreads = state.cpuCores > 1 ? Math.max(1, state.cpuCores - 1) : requestedThreads;
         const hasManualThreadSelection = settings.threadsManuallySet === true;
 
+        // Only restore a saved thread count when the user explicitly set it.
+        // When threads were never manually set, skip restoring from storage so that
+        // setCpuInfo (called after loadSettings) calculates the correct 50%-of-cores
+        // default with accurate CPU info, regardless of call ordering.
+        const restoredThreads = hasManualThreadSelection
+            ? { threads: Math.min(Math.max(1, requestedThreads), currentMaxThreads) }
+            : {};
+
         set({
             wallet: settings.wallet || state.wallet,
             workerName: settings.workerName || state.workerName,
-            threads: Math.min(Math.max(1, requestedThreads), currentMaxThreads),
+            ...restoredThreads,
             threadsManuallySet: hasManualThreadSelection,
             donateLevel: settings.donateLevel ?? state.donateLevel,
             poolUrl: nextPoolUrl,

@@ -10,7 +10,7 @@ import { nativeApi } from '../lib/native-api';
 
 export const SolanaAuthButton: React.FC = () => {
   const { theme } = useTheme();
-  const { user, isConnected, isConnecting } = useSolanaAuth();
+  const { user, isConnected, isConnecting, sessionExpired } = useSolanaAuth();
   const [error, setError] = useState<string | null>(null);
   const [bmtBalance, setBmtBalance] = useState<number | null>(null);
   const [balLoading, setBalLoading] = useState(false);
@@ -197,6 +197,28 @@ export const SolanaAuthButton: React.FC = () => {
 
   if (isConnected && user) {
     return (
+      <div className="flex flex-col gap-1.5">
+      {sessionExpired && (
+        <div className={cn(
+          'flex items-center gap-2 px-3 py-2 rounded-lg text-xs border',
+          isDark
+            ? 'bg-orange-500/10 border-orange-500/30 text-orange-300'
+            : 'bg-orange-100 border-orange-400/40 text-orange-700'
+        )}>
+          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+          <span className="flex-1">Session expired — reconnect to refresh stats</span>
+          <button
+            onClick={handleConnect}
+            disabled={isConnecting}
+            className={cn(
+              'font-semibold underline underline-offset-2 hover:no-underline transition cursor-pointer',
+              isDark ? 'text-orange-200' : 'text-orange-700'
+            )}
+          >
+            {isConnecting ? 'Connecting…' : 'Reconnect'}
+          </button>
+        </div>
+      )}
       <div className={cn(
         'flex items-center gap-2 xl:gap-3 px-3 xl:px-4 py-2 rounded-lg border',
         isDark ? 'bg-amber-200/10 border-amber-200/20' : 'bg-yellow-400/10 border-yellow-400/30'
@@ -231,6 +253,7 @@ export const SolanaAuthButton: React.FC = () => {
         >
           <LogOut className="w-4 h-4" />
         </button>
+      </div>
       </div>
     );
   }

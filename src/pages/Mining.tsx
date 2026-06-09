@@ -11,6 +11,7 @@ import type { P2PoolStratumSnapshot } from '../services/p2poolAPI';
 import { getEnvironmentConfig } from '../config/environment';
 import { nativeApi } from '../lib/native-api';
 import { backendJson } from '../lib/backend-api';
+import { detectNewShare } from '../lib/share-detection';
 
 const getErrorMessage = (err: any) => {
     if (!err) return 'Unknown error';
@@ -307,29 +308,28 @@ const Mining: React.FC = () => {
         };
     }, [isSolanaConnected, user?.publicKey, cpuName, workerName]);
 
-    // Load CPU info
-    useEffect(() => {
-        const loadCpuInfo = async () => {
-                    try {
-                        if (!(window as any).__TAURI_INTERNALS__) return;
-                        const info = await nativeApi.system.getCpuInfo();
-                        setCpuInfo(info.name, info.cores);
-                    } catch (err) {
-                        console.error('Failed to load CPU info:', err);
-                    }
-                };
-        loadCpuInfo();
-    }, [setCpuInfo]);
+    // CPU info is loaded inside the settings effect below so that setCpuInfo always
+    // runs AFTER loadSettings. This guarantees that the 50%-of-cores default thread
+    // count is computed with accurate CPU data regardless of async call ordering.
 
     const chartData = useMemo(() => (
         history.filter((point) => Number.isFinite(point?.hashrate) && point.hashrate >= 0)
     ), [history]);
 
-    // Load miner settings from localStorage/Native on component mount
+    // Load miner settings, then CPU info sequentially so setCpuInfo always has the
+    // correct threadsManuallySet flag before computing the 50%-of-cores default.
     useEffect(() => {
         let mounted = true;
         (async () => {
             await loadSettings();
+            if (mounted && (window as any).__TAURI_INTERNALS__) {
+                try {
+                    const info = await nativeApi.system.getCpuInfo();
+                    if (mounted) setCpuInfo(info.name, info.cores);
+                } catch (err) {
+                    console.error('Failed to load CPU info:', err);
+                }
+            }
             if (mounted) setSettingsLoaded(true);
             console.log('⚙️ Miner settings loaded from storage');
         })();
@@ -337,7 +337,7 @@ const Mining: React.FC = () => {
         return () => {
             mounted = false;
         };
-    }, [loadSettings]);
+    }, [loadSettings, setCpuInfo]);
 
     useEffect(() => {
         const storedElapsed = readStoredElapsed();
@@ -493,8 +493,10 @@ const Mining: React.FC = () => {
         }
 
         refreshVerifiedShares();
-        // XMRig proxy syncs every 60 s on the backend; polling faster is wasted work.
-        verifiedSharesIntervalRef.current = setInterval(refreshVerifiedShares, 60000);
+        // Poll more frequently while actively mining so reward window shares and
+        // wallet balance reflect the latest backend state with less delay.
+        const isActivelyMining = status === 'running' || status === 'starting';
+        verifiedSharesIntervalRef.current = setInterval(refreshVerifiedShares, isActivelyMining ? 30000 : 60000);
 
         return () => {
             if (verifiedSharesIntervalRef.current) {
@@ -502,7 +504,7 @@ const Mining: React.FC = () => {
                 verifiedSharesIntervalRef.current = null;
             }
         };
-    }, [refreshVerifiedShares, user?.publicKey]);
+    }, [refreshVerifiedShares, user?.publicKey, status]);
 
     // Fetch pool stats directly from the backend (XMRig proxy stats only — no P2Pool RPC).
     // When a single proxy is configured, use its individual stratum snapshot so stats
@@ -517,15 +519,20 @@ const Mining: React.FC = () => {
                 // stats.stratum is now always the XMRig-proxy-only aggregate from the backend.
                 const newStratum: P2PoolStratumSnapshot | null = stats.stratum || null;
 
-                // Fire the animation only when a new P2Pool verified share is found,
-                // not on every stratum submission. verifiedShares counts p2pool-share-found
-                // contributions in the current open reward window.
+                // detectNewShare handles the first-observation sentinel (-1) correctly:
+                // - First call: initialises the reference without animating so that shares
+                //   found in a previous session don't trigger a spurious animation.
+                // - Subsequent calls: animate only when the count strictly increases.
                 const incomingVerifiedShares = Number(stats.verifiedShares || 0);
-                if (incomingVerifiedShares > 0 && incomingVerifiedShares > lastShareCountRef.current) {
-                    if (lastShareCountRef.current >= 0) {
-                        setShowShareAnimation(true);
-                    }
-                    lastShareCountRef.current = incomingVerifiedShares;
+                const detection = detectNewShare(incomingVerifiedShares, {
+                    lastShareCount: lastShareCountRef.current
+                });
+                lastShareCountRef.current = detection.newLastShareCount;
+                if (detection.shouldAnimate) {
+                    setShowShareAnimation(true);
+                    // Immediately pull fresh balance + reward-window shares so the UI
+                    // reflects the credited reward as soon as the share is confirmed.
+                    refreshVerifiedShares();
                 }
 
                 setStratumStats(newStratum);

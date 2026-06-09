@@ -1296,10 +1296,14 @@ fn build_xmrig_args(request: &MinerStartRequest, _benchmark: bool) -> Result<(St
         .map(|value| validate_miner_value(&value, "solana wallet", 160))
         .transpose()?
         .unwrap_or_else(|| worker.clone());
+    // P2Pool's log-shipper expects the user field in SHARE FOUND lines to be
+    // prefixed with "mb_" so it can identify MineBench miners and extract the
+    // Solana wallet address. Without the prefix the log-shipper regex drops the
+    // share event and no contribution is ever recorded in the backend.
     let rig_id = if solana_wallet == worker {
-        solana_wallet.clone()
+        format!("mb_{}", solana_wallet)
     } else {
-        validate_miner_value(&format!("{}.{}", solana_wallet, worker), "rig id", 220)?
+        validate_miner_value(&format!("mb_{}.{}", solana_wallet, worker), "rig id", 220)?
     };
     let api_port = "4077";
     let donate_level = request.donate_level.unwrap_or(0).min(5).to_string();

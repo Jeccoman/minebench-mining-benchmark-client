@@ -130,6 +130,7 @@ interface SolanaAuthState {
   user: SolanaUser | null;
   isConnected: boolean;
   isConnecting: boolean;
+  sessionExpired: boolean;
 
   // Mining stats
   miningStats: UserMiningStats | null;
@@ -142,6 +143,7 @@ interface SolanaAuthState {
   setUser: (user: SolanaUser | null) => void;
   setConnecting: (loading: boolean) => void;
   setMiningStats: (stats: UserMiningStats) => void;
+  setSessionExpired: (expired: boolean) => void;
   addDevice: (device: MiningDevice) => void;
   updateDevice: (id: string, updates: Partial<MiningDevice>) => void;
   removeDevice: (id: string) => void;
@@ -154,6 +156,7 @@ export const useSolanaAuth = create<SolanaAuthState>((set) => ({
   user: null,
   isConnected: false,
   isConnecting: false,
+  sessionExpired: false,
   miningStats: null,
   statsLoading: false,
   devices: [],
@@ -162,7 +165,8 @@ export const useSolanaAuth = create<SolanaAuthState>((set) => ({
     set({
       user,
       isConnected: !!user,
-      isConnecting: false
+      isConnecting: false,
+      sessionExpired: false
     }),
 
   setConnecting: (isConnecting) => set({ isConnecting }),
@@ -172,6 +176,8 @@ export const useSolanaAuth = create<SolanaAuthState>((set) => ({
       miningStats,
       statsLoading: false
     }),
+
+  setSessionExpired: (sessionExpired) => set({ sessionExpired }),
 
   addDevice: (device) =>
     set((state) => ({
@@ -194,6 +200,7 @@ export const useSolanaAuth = create<SolanaAuthState>((set) => ({
     set({
       user: null,
       isConnected: false,
+      sessionExpired: false,
       miningStats: null,
       devices: []
     })
@@ -344,6 +351,7 @@ export class SolanaAuthService {
         }
       });
       authStorage.setToken(token);
+      useSolanaAuth.getState().setSessionExpired(false);
 
       // Fetch stats immediately after login
       await this.fetchMiningStats(walletAddress);
@@ -409,10 +417,14 @@ export class SolanaAuthService {
       let balanceData: any;
       try {
         balanceData = await backendJson('/api/rewards/balance', { token: storedToken });
+        // Successful fetch — clear any previous session-expired flag.
+        useSolanaAuth.getState().setSessionExpired(false);
       } catch (err) {
         if (err instanceof BackendApiError && err.status === 401) {
-          console.warn('[SolanaAuth] Session expired');
+          console.warn('[SolanaAuth] Session expired — showing reconnect warning');
           authStorage.removeToken();
+          // Signal the UI to show a reconnect warning instead of silently zeroing stats.
+          useSolanaAuth.getState().setSessionExpired(true);
           const empty = this.getEmptyStats();
           useSolanaAuth.getState().setMiningStats(empty);
           return empty;
