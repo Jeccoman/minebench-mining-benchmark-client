@@ -9,6 +9,10 @@ fn main() {
     {
         std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        // Force X11 backend to avoid Wayland/DMABuf abort on AMD GPUs (Ubuntu 26.04+)
+        if std::env::var("GDK_BACKEND").is_err() {
+            std::env::set_var("GDK_BACKEND", "x11");
+        }
     }
     app_lib::run();
 }
