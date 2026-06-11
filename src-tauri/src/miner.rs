@@ -42,6 +42,30 @@ pub async fn spawn_miner(
         return Err(message);
     }
 
+    // On Unix, make sure the miner binary is executable before spawning it.
+    // Bundled binaries can lose their executable bit during packaging or
+    // extraction, which makes the spawn below fail with "Permission denied"
+    // (os error 13). Re-applying the bit is a no-op when it is already set.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(metadata) = std::fs::metadata(&path) {
+            let mode = metadata.permissions().mode();
+            if mode & 0o111 == 0 {
+                let mut perms = metadata.permissions();
+                perms.set_mode(mode | 0o755);
+                if let Err(e) = std::fs::set_permissions(&path, perms) {
+                    let message = format!(
+                        "Failed to make miner binary executable ({}): {}",
+                        miner_path, e
+                    );
+                    let _ = app.emit("miner-error", message.clone());
+                    return Err(message);
+                }
+            }
+        }
+    }
+
     let mut cmd = Command::new(&miner_path);
     cmd.args(&args);
     cmd.stdout(Stdio::piped());
