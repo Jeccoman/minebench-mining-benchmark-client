@@ -178,6 +178,8 @@ const Mining: React.FC = () => {
     const [poolNetworkHashrate, setPoolNetworkHashrate] = useState(300000000000); // Default Monero difficulty
     const [xmrigConnection, setXmrigConnection] = useState<{ pool: string; ping: number; uptime: number } | null>(null);
     const statusRef = useRef(status);
+    const miningActionInFlightRef = useRef(false);
+    const cancelStartRequestedRef = useRef(false);
     const userPublicKeyRef = useRef(user?.publicKey);
     const currentHashrateRef = useRef(currentHashrate);
     const stratumSharesRef = useRef(stratumStats?.total_stratum_shares || 0);
@@ -225,6 +227,11 @@ const Mining: React.FC = () => {
         elapsedTimeRef.current = elapsedTime;
         poolNetworkHashrateRef.current = poolNetworkHashrate;
     }, [status, user?.publicKey, currentHashrate, stratumStats?.total_stratum_shares, stratumStats?.shares_found, workerName, deviceType, elapsedTime, poolNetworkHashrate]);
+
+    const setMiningStatus = useCallback((nextStatus: typeof status) => {
+        statusRef.current = nextStatus;
+        setStatus(nextStatus);
+    }, [setStatus]);
 
     const persistMiningTimer = (startedAt: number | null, elapsed: number) => {
         try {
@@ -798,7 +805,7 @@ const Mining: React.FC = () => {
 
     const startMining = async () => {
         console.log("Start Mining clicked");
-        if (status === 'running' || status === 'starting') {
+        if (miningActionInFlightRef.current || statusRef.current === 'running' || statusRef.current === 'starting') {
             console.log("Mining already running or starting, skipping.");
             return;
         }
@@ -811,15 +818,24 @@ const Mining: React.FC = () => {
             return;
         }
 
+        miningActionInFlightRef.current = true;
+        cancelStartRequestedRef.current = false;
+        setMiningStatus('starting');
+
         // Ensure we have the latest config
         console.log("Invalidating pool config cache...");
-        p2poolAPI.invalidateCache();
-        console.log("Fetching latest public config...");
         try {
+            p2poolAPI.invalidateCache();
+            console.log("Fetching latest public config...");
             await fetchPublicConfig();
             console.log("Public config fetched successfully.");
         } catch (e) {
             console.error("Failed to fetch public config:", e);
+        }
+        if (cancelStartRequestedRef.current) {
+            setMiningStatus('idle');
+            miningActionInFlightRef.current = false;
+            return;
         }
         const latestState = useMinerStore.getState();
         const latestPrimaryPool = latestState.pools?.['cpu'];
@@ -833,8 +849,15 @@ const Mining: React.FC = () => {
                 : !!(latestPrimaryPool?.isSynced && latestPrimaryPool?.progress >= 99.9);
             if (!latestNodeFullySynced) {
                 addLog('Cannot start mining: pool node is not fully synced yet.');
+                setMiningStatus('idle');
+                miningActionInFlightRef.current = false;
                 return;
             }
+        }
+        if (cancelStartRequestedRef.current) {
+            setMiningStatus('idle');
+            miningActionInFlightRef.current = false;
+            return;
         }
 
         resetSession();
@@ -864,22 +887,41 @@ const Mining: React.FC = () => {
                 solanaWallet: user!.publicKey,
             });
             console.log("start-mining command invoked.");
-            setStatus('starting');
-            fetchStats();
+            if (cancelStartRequestedRef.current) {
+                await nativeApi.miner.stopMining();
+                setMiningStatus('completed');
+                addLog('Mining stopped');
+            } else {
+                fetchStats();
+            }
         } catch (err: any) {
             console.error("Failed to start-mining:", err);
-            setStatus('error');
+            setMiningStatus('error');
             addLog(`Failed to start mining: ${getErrorMessage(err)}`);
+        } finally {
+            miningActionInFlightRef.current = false;
+            cancelStartRequestedRef.current = false;
         }
     };
 
     const stopMining = async () => {
+        if (miningActionInFlightRef.current) {
+            if (statusRef.current === 'starting') {
+                cancelStartRequestedRef.current = true;
+                setMiningStatus('stopping');
+            }
+            return;
+        }
+        if (statusRef.current === 'idle' || statusRef.current === 'completed' || statusRef.current === 'error' || statusRef.current === 'stopping') {
+            return;
+        }
+        miningActionInFlightRef.current = true;
         if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
         if (timeIntervalRef.current) clearInterval(timeIntervalRef.current);
         pausedElapsedRef.current = elapsedTime;
         miningStartedAtRef.current = null;
         persistMiningTimer(null, elapsedTime);
-        setStatus('stopping');
+        setMiningStatus('stopping');
         try {
             const { logs: storeLogs } = useMinerStore.getState();
             await nativeApi.miner.saveLogs({
@@ -889,40 +931,54 @@ const Mining: React.FC = () => {
                 device: deviceType
             });
             await nativeApi.miner.stopMining();
-            setStatus('completed');
+            setMiningStatus('completed');
             addLog('Mining stopped');
         } catch (err: any) {
-            setStatus('error');
+            setMiningStatus('error');
             addLog(`Failed to stop mining: ${getErrorMessage(err)}`);
+        } finally {
+            miningActionInFlightRef.current = false;
         }
     };
 
     const pauseMining = async () => {
+        if (miningActionInFlightRef.current || statusRef.current !== 'running') {
+            return;
+        }
+        miningActionInFlightRef.current = true;
         try {
             await nativeApi.miner.pauseMining();
             pausedElapsedRef.current = elapsedTime;
             miningStartedAtRef.current = null;
             persistMiningTimer(null, elapsedTime);
-            setStatus('paused');
+            setMiningStatus('paused');
             if (timeIntervalRef.current) clearInterval(timeIntervalRef.current);
             addLog('Mining paused');
         } catch (err: any) {
-            setStatus('error');
+            setMiningStatus('error');
             addLog(`Failed to pause mining: ${getErrorMessage(err)}`);
+        } finally {
+            miningActionInFlightRef.current = false;
         }
     };
 
     const resumeMining = async () => {
+        if (miningActionInFlightRef.current || statusRef.current !== 'paused') {
+            return;
+        }
+        miningActionInFlightRef.current = true;
         try {
             await nativeApi.miner.resumeMining();
             pausedElapsedRef.current = elapsedTime;
             miningStartedAtRef.current = Date.now();
             persistMiningTimer(miningStartedAtRef.current, elapsedTime);
-            setStatus('running');
+            setMiningStatus('running');
             addLog('Mining resumed');
         } catch (err: any) {
-            setStatus('error');
+            setMiningStatus('error');
             addLog(`Failed to resume mining: ${getErrorMessage(err)}`);
+        } finally {
+            miningActionInFlightRef.current = false;
         }
     };
 
