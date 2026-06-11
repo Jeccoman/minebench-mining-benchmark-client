@@ -1194,6 +1194,8 @@ fn resolve_miner_path(app: &AppHandle, miner_name: &str) -> Result<PathBuf, Stri
     let miner_exe = format!("{}{}", miner_name, exe_ext);
 
     // Determine sub-directory for xmrig variants
+    // `mut` is only needed on x86_64, where the cfg block below reassigns it.
+    #[cfg_attr(not(target_arch = "x86_64"), allow(unused_mut))]
     let mut miner_sub_dir = "";
     if miner_name.to_lowercase() == "xmrig" {
         #[cfg(target_arch = "x86_64")]
