@@ -96,7 +96,6 @@ pub async fn backend_request(request: BackendRequest) -> Result<serde_json::Valu
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
-        .danger_accept_invalid_certs(true)
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -549,7 +548,6 @@ pub async fn get_runtime_pool_config() -> Result<serde_json::Value, String> {
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(8))
-        .danger_accept_invalid_certs(true)
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -610,7 +608,6 @@ pub async fn get_latest_benchmark(device_type: String) -> Result<serde_json::Val
     let requested_type = device_type.trim().to_uppercase();
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
-        .danger_accept_invalid_certs(true)
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -660,7 +657,6 @@ pub async fn get_latest_benchmark(device_type: String) -> Result<serde_json::Val
 pub async fn submit_benchmark_result(record: serde_json::Value) -> Result<serde_json::Value, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
-        .danger_accept_invalid_certs(true)
         .build()
         .map_err(|e| e.to_string())?;
 
