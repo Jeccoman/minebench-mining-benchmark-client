@@ -12,7 +12,8 @@ MineBench is a **crypto mining benchmark tool for CPU and GPU** that allows user
 ![Monero mining support](https://img.shields.io/badge/Monero-FF6600?style=for-the-badge&logo=monero&logoColor=white)
 ![Linux app support](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)
 ![Windows app support](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)
-![Electron JS desktop app](https://img.shields.io/badge/Electron_JS-47848F?style=for-the-badge&logo=electron&logoColor=white)
+![macOS app support](https://img.shields.io/badge/macOS-000000?style=for-the-badge&logo=apple&logoColor=white)
+![Tauri desktop app](https://img.shields.io/badge/Tauri-24C8D8?style=for-the-badge&logo=tauri&logoColor=white)
 ![MIT License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)
 ![Open source project](https://img.shields.io/badge/Open%20Source-Yes-brightgreen?style=for-the-badge)  
 [![MineBench logo for crypto mining benchmark platform](public/minebench-logo-yellow-150px.png)](https://minebench.cloud/)
@@ -26,8 +27,8 @@ This **mining benchmark client** allows users to measure hashrate, optimize mini
 - ⛏️ Integrated crypto mining support
 - 🧠 Real-time hashrate & performance metrics
 - 💰 Earn rewards on Solana blockchain
-- 🖥️ Cross-platform (Windows & Linux)
-- 🔐 Secure and lightweight Electron app
+- 🖥️ Cross-platform (Windows, macOS & Linux)
+- 🔐 Secure and lightweight Tauri app
 
 
 ## Why Choose MineBench for Crypto Mining Benchmarking
@@ -87,7 +88,7 @@ That split matters:
 
 ## Technology stack
 
-- Electron
+- Tauri (Rust)
 - React
 - TypeScript
 - Vite
@@ -156,6 +157,23 @@ All operations are transparent and verifiable.
 
 ## Download MineBench Crypto Mining Benchmark App
 [![Download](https://img.shields.io/badge/⬇️_Download-MineBench-blue?style=for-the-badge)](https://minebench.cloud/downloads)
+
+### Note for macOS users
+
+The macOS build is currently not notarized by Apple. On first launch, Gatekeeper
+shows *"Apple could not verify that MineBench Client is free of malware"* with no
+"Open anyway" option. Do **not** click "Move to Trash". Instead:
+
+1. Click "Done".
+2. Open **System Settings → Privacy & Security**, scroll down and click
+   **"Open Anyway"** next to the MineBench Client entry, or remove the quarantine
+   flag in a terminal:
+
+   ```sh
+   xattr -dr com.apple.quarantine "/Applications/MineBench Client.app"
+   ```
+
+3. Launch the app again.
 
 ## Support the Project – Buy $BMT Token 
 [![Support](https://img.shields.io/badge/💰_Support-Buy_Token-green?style=for-the-badge)](https://pump.fun/coin/67ipDsgK6D7bqTW89H8T1KTxUvVuaFy92GX7Q2XFVdev)
