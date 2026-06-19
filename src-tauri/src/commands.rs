@@ -538,8 +538,8 @@ pub async fn get_premium_status(_public_key: String) -> Result<serde_json::Value
 pub async fn get_runtime_pool_config() -> Result<serde_json::Value, String> {
     let fallback = serde_json::json!({
         "primary": {
-            "poolUrl": "xmr-us.minebench.cloud:3333",
-            "rpcHost": "143.42.22.242",
+            "poolUrl": "xmr.minebench.cloud:3333",
+            "rpcHost": "xmr.minebench.cloud",
             "rpcPort": 18089,
             "stratumPort": 3333
         },
@@ -570,9 +570,9 @@ pub async fn get_runtime_pool_config() -> Result<serde_json::Value, String> {
     };
 
     let primary = &config["pool"]["primary"];
-    let stratum_host = primary["stratumHost"].as_str().unwrap_or("xmr-us.minebench.cloud");
+    let stratum_host = primary["stratumHost"].as_str().unwrap_or("xmr.minebench.cloud");
     let stratum_port = primary["stratumPort"].as_u64().unwrap_or(3333);
-    let rpc_host = primary["rpcHost"].as_str().unwrap_or("143.42.22.242");
+    let rpc_host = primary["rpcHost"].as_str().unwrap_or("xmr.minebench.cloud");
     let rpc_port = primary["rpcPort"].as_u64().unwrap_or(18089);
 
     Ok(serde_json::json!({
@@ -753,13 +753,14 @@ fn validate_rpc_host(host: &str) -> Result<String, String> {
         return Err("Invalid RPC host".to_string());
     }
 
+    // Allow localhost and any *.minebench.cloud domain.
+    // Do not whitelist raw IPs — Akash assigns dynamic IPs on every redeploy,
+    // so an IP-based allowlist is always stale. Use DNS names instead.
     let allowed = host == "localhost"
         || host == "127.0.0.1"
         || host == "::1"
-        || host == "143.42.22.242"
         || host.ends_with(".minebench.cloud")
-        || host == "minebench.cloud"
-        || host == "backend.minebench.cloud";
+        || host == "minebench.cloud";
 
     if allowed {
         Ok(host)
@@ -1279,7 +1280,7 @@ fn build_xmrig_args(request: &MinerStartRequest, _benchmark: bool) -> Result<(St
     let pool_url = request
         .pool_url
         .clone()
-        .unwrap_or_else(|| "xmr-us.minebench.cloud:3333".to_string());
+        .unwrap_or_else(|| "xmr.minebench.cloud:3333".to_string());
     let pool_url = validate_pool_url(&pool_url)?;
     let normalized_pool = if pool_url.contains("://") {
         pool_url
@@ -1326,6 +1327,7 @@ fn build_xmrig_args(request: &MinerStartRequest, _benchmark: bool) -> Result<(St
         "x".to_string(),
         "--rig-id".to_string(),
         rig_id,
+        "--keepalive".to_string(),
         "--http-enabled".to_string(),
         "--http-host".to_string(),
         "127.0.0.1".to_string(),

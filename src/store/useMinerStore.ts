@@ -78,6 +78,7 @@ interface MiningState {
             connected: boolean;
             message?: string;
             coin?: string;
+            peers?: number;
         };
     };
 
@@ -212,23 +213,14 @@ export const useMinerStore = create<MiningState>((set, get) => ({
     backendBackupPoolUrl: env.poolStratumUrlBackup,
     backendPoolEndpoints: [
         {
-            id: 'us',
-            label: 'MineBench US',
-            region: 'US',
+            id: 'global',
+            label: 'XMR Pool MineBench',
+            region: 'GLOBAL',
             host: env.poolStratumHost,
             port: env.poolStratumPort,
             url: env.poolStratumUrl,
             default: true
-        },
-        ...(env.enableBackupPool ? [{
-            id: 'eu',
-            label: 'MineBench EU',
-            region: 'EU',
-            host: env.poolStratumHostBackup,
-            port: env.poolStratumPortBackup,
-            url: env.poolStratumUrlBackup,
-            default: false
-        }] : [])
+        }
     ],
     cpuPriority: 2, // Default: balanced (0=lowest, 5=highest)
     randomxMode: 'auto', // auto-detect best mode

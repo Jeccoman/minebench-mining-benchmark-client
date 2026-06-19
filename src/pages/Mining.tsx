@@ -383,6 +383,7 @@ const Mining: React.FC = () => {
 
         let unlistenLog: () => void;
         let unlistenError: () => void;
+        let unlistenExit: () => void;
 
         const setupListeners = async () => {
             unlistenLog = await nativeApi.listen<string>('miner-log', (msg: string) => {
@@ -391,16 +392,12 @@ const Mining: React.FC = () => {
                     addLog(msg);
                     return;
                 }
-                const isConnectError =
-                    line.includes('connection refused') ||
-                    line.includes('failed to connect') ||
-                    line.includes('connect error') ||
-                    line.includes('login failed') ||
-                    line.includes('stratum connection failed') ||
-                    line.includes('network error');
-                if (isConnectError) {
+                // XMRig auto-retries transient connection errors; don't flip to error
+                // state for them — only miner-exit should trigger that. Auth failure
+                // ('login failed') is a persistent error that is worth surfacing.
+                if (line.includes('login failed')) {
                     setStatus('error');
-                    addLog(`❌ Mining connection error: ${msg.trim()}`);
+                    addLog(`❌ Mining auth error: ${msg.trim()}`);
                 }
                 if (line.includes('connected') || line.includes('login succeeded') || line.includes('new job')) {
                     if (statusRef.current !== 'running') {
@@ -410,11 +407,34 @@ const Mining: React.FC = () => {
                 }
             });
 
+            // XMRig on Windows writes ALL log output to stderr (not stdout), so
+            // every normal log line arrives here. Do NOT trigger error status from
+            // stderr content — miner-exit (below) handles actual process failure.
+            // We still forward the line to the log for visibility, but only if it
+            // looks like a [MineBench] tag or a genuine crash (not XMRig stdout
+            // that happens to contain "error" or "failed" in normal messages like
+            // "randomx: failed to lock memory" which is a non-fatal warning).
             unlistenError = await nativeApi.listen<string>('miner-error', (msg: string) => {
                 const message = String(msg || '').trim();
-                if (message) {
+                if (!message) return;
+                const line = message.toLowerCase();
+                const isCrash =
+                    line.includes('fatal') ||
+                    line.includes('exception') ||
+                    line.includes('abort') ||
+                    line.includes('segfault') ||
+                    line.includes('access violation');
+                if (isCrash) {
                     setStatus('error');
-                    addLog(`Miner error: ${message}`);
+                    addLog(`❌ Miner crash: ${message}`);
+                }
+            });
+
+            // XMRig process exit — clear running state so the UI doesn't stay stuck.
+            unlistenExit = await nativeApi.listen<string>('miner-exit', () => {
+                if (statusRef.current === 'running' || statusRef.current === 'starting') {
+                    setStatus('error');
+                    addLog('⚠️ Miner process exited unexpectedly');
                 }
             });
         };
@@ -424,6 +444,7 @@ const Mining: React.FC = () => {
         return () => {
             if (unlistenLog) unlistenLog();
             if (unlistenError) unlistenError();
+            if (unlistenExit) unlistenExit();
         };
     }, [setStatus, addLog]);
 
@@ -869,6 +890,12 @@ const Mining: React.FC = () => {
         setPeakHashrate(0);
         persistMiningTimer(miningStartedAtRef.current, 0);
         try {
+            // Ensure the Rust MinerState lock is clear before spawning.
+            // UI status and the Rust lock can desync when XMRig exits silently
+            // (miner-error flips the UI to 'error' while XMRig is still alive).
+            // stop_miner is a no-op when nothing is running, so this is always safe.
+            try { await nativeApi.miner.stopMining(); } catch {}
+
             addLog(`Starting miner: XMR payout wallet (-u) ${wallet}`);
             addLog(`Starting miner: reward tracking (--rig-id) ${user!.publicKey}`);
             addLog(`Starting miner: pool ${latestState.poolUrl}`);

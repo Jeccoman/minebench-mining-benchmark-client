@@ -12,8 +12,8 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
   const { theme } = useTheme();
   const { dbTotalBMT, status, pools, poolHashrateTotal, poolMinersCount, xmrUsd, bmtUsd, rateXmrBmt } = useMinerStore();
   const poolLabels: Record<string, string> = {
-    'cpu': 'MineBench US',
-    'cpu-backup': 'MineBench EU'
+    'cpu': 'XMR Pool MineBench',
+    'cpu-backup': 'XMR Pool MineBench'
   };
   const [nodeStatusVisible, setNodeStatusVisible] = useState(true);
 
@@ -124,6 +124,21 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
                                     style={{ width: `${Math.max(pool.progress, 2)}%` }}
                                 />
                             </div>
+                            {pool.height > 0 && (
+                                <div className={cn("flex justify-between text-[10px] font-mono pt-0.5",
+                                  theme === 'light' ? 'text-zinc-500' : 'text-zinc-600'
+                                )}>
+                                    <span>{pool.height.toLocaleString()}</span>
+                                    <span>/ {pool.targetHeight.toLocaleString()}</span>
+                                </div>
+                            )}
+                            {pool.peers !== undefined && (
+                                <div className={cn("text-[10px] font-mono",
+                                  theme === 'light' ? 'text-zinc-500' : 'text-zinc-600'
+                                )}>
+                                    {`${pool.peers} peer${pool.peers !== 1 ? 's' : ''}`}
+                                </div>
+                            )}
                         </div>
                     </div>
                 ))}
