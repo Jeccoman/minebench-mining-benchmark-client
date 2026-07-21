@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { classifyMinerOutput, shouldMarkMinerExited } from './miner-output.ts';
+import { classifyMinerOutput, isTransientPoolNetworkError, shouldMarkMinerExited } from './miner-output.ts';
 
 assert.equal(classifyMinerOutput('net new job from xmr.minebench.cloud:3333'), 'connected');
 assert.equal(classifyMinerOutput('login succeeded'), 'connected');
